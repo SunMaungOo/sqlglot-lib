@@ -279,18 +279,16 @@ def internal_find_select_statement_source_target(ast:Expression)->Tuple[Set[str]
 
     target:List[str] = list()
 
-    if "with" in ast.args:
-        ddl_with = ast.args.get("with")
+    for cte_ast in ast.find_all(exp.CTE):
 
-        table_expression = ddl_with.expressions[0].find(exp.Table)
+        for base_table in find_base_tables(ast=cte_ast):
 
-        if table_expression is not None:
-            source.add(internal_get_table_name(table_expression=table_expression))
+            source.add(base_table)
 
     root = build_scope(ast)
 
     for scope in root.traverse():
-
+        
         cte_names = [cte.alias for cte in scope.ctes]
 
         all_physical_tables = [internal_get_table_name(table) for table in scope.tables if table.name not in cte_names]
