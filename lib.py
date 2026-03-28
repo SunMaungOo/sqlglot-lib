@@ -99,9 +99,9 @@ def find_physical_column(ast:Expression)->List[Tuple[str,str]]:
 
     return physical_columns
 
-def find_source_target_table(ast:Expression)->Tuple[Set[str],List[str]]:
+def find_source_target_table(ast:Expression)->List[Tuple[Set[str],List[str]]]:
     """
-    (Set of source table name excluding cte , List of target table name)
+    List[(Set of source table name excluding cte , List of target table name)]
     """
 
     #we use set because the source table can be multiple scope (such as case with CTE)
@@ -110,10 +110,15 @@ def find_source_target_table(ast:Expression)->Tuple[Set[str],List[str]]:
 
     target:List[str] = list()
 
-    if internal_is_contain_select(ast) and not internal_is_dml_or_ddl(ast):
+    output:List[Tuple[Set[str],List[str]]] = list()
+
+    if internal_is_branch(ast):
+        return internal_find_branch_source_target(ast)
+    elif internal_is_contain_select(ast) and not internal_is_dml_or_ddl(ast):
         (source,target) = internal_find_select_statement_source_target(ast)
     elif internal_is_rename_table(ast):
         (source,target) = internal_find_rename_table_source_target(ast)
+
     else:
 
         if internal_is_insert_into(ast):
@@ -152,7 +157,10 @@ def find_source_target_table(ast:Expression)->Tuple[Set[str],List[str]]:
     #if we do not find any target , it could be DDL or DML statement. The above work because we can still get the source table
     #because FROM , JOIN only can be parse with select statement
 
-    return (source,target)
+    if len(source)>0 or len(target)>0:
+        output.append((source,target))
+
+    return output
 
 
 def has_table(ast:Expression)->bool:
@@ -202,6 +210,13 @@ def internal_is_rename_table(ast:Expression)->bool:
         is_found_object_literal\
         and is_found_to_literal
 
+def internal_is_branch(ast:Expression)->bool:
+    """
+    Check if it contain the branching statement
+    """
+    return ast.find(exp.IfBlock) is not None or\
+    ast.find(exp.WhileBlock) is not None
+
 def split_empty_array(text:str,sep:str)->List[str]:
     """
     Split while removing the empty block
@@ -219,6 +234,40 @@ def split_empty_array(text:str,sep:str)->List[str]:
 
 
     return new_blocks
+
+def internal_find_branch_source_target(ast:Expression)->List[Tuple[Set[str],List[str]]]:
+    """
+    List[(Set of source table name, List of target table name)]
+    """
+    output:List[Tuple[Set[str],List[str]]] = list()
+
+    if_block = ast.find(exp.IfBlock)
+
+    while_block = ast.find(exp.WhileBlock)
+
+    if if_block is None and\
+        while_block is None:
+        return list()
+    
+    if if_block is not None:
+
+        if "true" in if_block.args\
+            and if_block.args["true"]:
+
+            for expression in if_block.args["true"].expressions:
+                output.extend(find_source_target_table(ast=expression))
+
+        if "false" in if_block.args\
+            and if_block.args["false"]:
+
+            for expression in if_block.args["false"].expressions:
+                output.extend(find_source_target_table(ast=expression))
+
+    elif while_block is not None:
+        for expression in while_block.args["body"].expressions:
+            output.extend(find_source_target_table(ast=expression))
+    
+    return output
 
 def internal_find_rename_table_source_target(ast:Expression)->Tuple[Set[str],List[str]]:
     """
@@ -286,6 +335,9 @@ def internal_find_select_statement_source_target(ast:Expression)->Tuple[Set[str]
             source.add(base_table)
 
     root = build_scope(ast)
+
+    if root is None:
+        return (source,target)
 
     for scope in root.traverse():
         

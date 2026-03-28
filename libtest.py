@@ -112,9 +112,12 @@ def test_find_source_target_table_single_select_into():
 
     ast = parse_one(sql=sql)
 
-    (source,target) = find_source_target_table(ast=ast)
+    output = find_source_target_table(ast=ast)
 
-    
+    assert len(output)==1
+
+    (source,target) = output[0]
+
     assert len(source)==2
     assert "foo" in source
     assert "product" in source
@@ -143,8 +146,11 @@ def test_find_source_target_table_cte_select_into():
 
     ast = parse_one(sql=sql)
 
-    (source,target) = find_source_target_table(ast=ast)
+    output = find_source_target_table(ast=ast)
 
+    assert len(output)==1
+
+    (source,target) = output[0]
     
     assert len(source)==3
     assert "foo" in source
@@ -166,8 +172,11 @@ def test_find_source_target_table_single_insert_into():
 
     ast = parse_one(sql=sql)
 
-    (source,target) = find_source_target_table(ast=ast)
+    output = find_source_target_table(ast=ast)
 
+    assert len(output)==1
+
+    (source,target) = output[0]
     
     assert len(source)==2
     assert "foo" in source
@@ -196,8 +205,11 @@ def test_find_source_target_table_cte_insert_into():
 
     ast = parse_one(sql=sql)
 
-    (source,target) = find_source_target_table(ast=ast)
+    output = find_source_target_table(ast=ast)
 
+    assert len(output)==1
+
+    (source,target) = output[0]
     
     assert len(source)==3
     assert "foo" in source
@@ -221,8 +233,11 @@ def test_find_source_target_table_single_insert():
 
     ast = parse_one(sql=sql)
 
-    (source,target) = find_source_target_table(ast=ast)
+    output = find_source_target_table(ast=ast)
 
+    assert len(output)==1
+
+    (source,target) = output[0]
     
     assert len(source)==2
     assert "foo" in source
@@ -276,7 +291,11 @@ def test_find_source_target_table_single_update():
 
     ast = parse_one(sql=sql)
 
-    (source,target) = find_source_target_table(ast=ast)
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
 
     assert len(source)==2
     assert "bar" in source
@@ -303,7 +322,11 @@ def test_find_source_target_table_cte_update():
 
     ast = parse_one(sql=sql)
 
-    (source,target) = find_source_target_table(ast=ast)
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
 
     assert len(source)==2
     assert "bar" in source
@@ -325,7 +348,11 @@ def test_find_source_target_table_single_delete():
 
     ast = parse_one(sql=sql)
 
-    (source,target) = find_source_target_table(ast=ast)
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
 
     assert len(source)==2
     assert "foo" in source
@@ -354,7 +381,11 @@ def test_find_source_target_table_cte_delete():
 
     ast = parse_one(sql=sql)
 
-    (source,target) = find_source_target_table(ast=ast)
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
 
     assert len(source)==3
     assert "foo" in source
@@ -376,7 +407,11 @@ def test_find_source_target_table_drop():
 
     ast = parse_one(sql=sql)
 
-    (source,target) = find_source_target_table(ast=ast)
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
 
     assert len(source)==1
     assert "foo" in source
@@ -456,8 +491,12 @@ def test_find_source_target_table_cte_delete_condition():
 
     ast = find_parseable_ast(asts=asts)[0]
 
-    (source,target) = find_source_target_table(ast=ast)
-    
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
+
     assert len(source)==3
     assert "foo" in source
     assert "product" in source
@@ -488,7 +527,11 @@ def test_find_source_target_table_create_table():
 
     ast = parse_one(sql,dialect="tsql")
 
-    (source,target) = find_source_target_table(ast=ast)
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
 
     assert len(source)==2
     assert "bar" in source
@@ -510,8 +553,12 @@ def test_find_source_target_table_single_insert_into_with_database_schema():
 
     ast = parse_one(sql=sql)
 
-    (source,target) = find_source_target_table(ast=ast)
-    
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
+
     assert len(source)==2
     assert "db.s1.foo" in source
     assert "s2.product" in source
@@ -519,6 +566,211 @@ def test_find_source_target_table_single_insert_into_with_database_schema():
 
     assert len(target)==1
     assert "hello.bar" in target
+
+def test_find_source_target_table_if():
+    sql = """
+
+    IF(1=1)
+    BEGIN
+        SELECT id
+        FROM cat
+    END
+
+    """
+
+    ast = parse_one(sql=sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "cat" in source
+    assert len(target)==0
+
+def test_find_source_target_table_if_else():
+
+    sql = """
+
+    IF(1=1)
+    BEGIN
+        SELECT id
+        FROM cat
+    END
+    ELSE
+    BEGIN
+        SELECT id
+        FROM dog
+    END
+
+    """
+
+    ast = parse_one(sql=sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==2
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "cat" in source
+    assert len(target)==0
+
+    (source,target) = output[1]
+
+    assert len(source)==1
+    assert "dog" in source
+    assert len(target)==0
+
+
+def test_find_source_target_table_if_elseif():
+
+    sql = """
+
+    IF(1=1)
+    BEGIN
+        SELECT id
+        FROM cat
+    END
+    ELSE IF(1=2)
+    BEGIN
+        SELECT id
+        FROM dog
+    END
+
+    """
+
+    ast = parse_one(sql=sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==2
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "cat" in source
+    assert len(target)==0
+
+    (source,target) = output[1]
+
+    assert len(source)==1
+    assert "dog" in source
+    assert len(target)==0
+
+
+def test_find_source_target_table_if_elseif_else():
+
+    sql = """
+
+    IF(1=1)
+    BEGIN
+        SELECT id
+        FROM cat
+    END
+    ELSE IF(1=2)
+    BEGIN
+        SELECT id
+        FROM dog
+    END
+    ELSE
+    BEGIN
+        SELECT id
+        FROM apple
+    END
+
+    """
+
+    ast = parse_one(sql=sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==3
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "cat" in source
+    assert len(target)==0
+
+    (source,target) = output[1]
+
+    assert len(source)==1
+    assert "dog" in source
+    assert len(target)==0
+
+    (source,target) = output[2]
+
+    assert len(source)==1
+    assert "apple" in source
+    assert len(target)==0
+
+def test_find_source_target_table_nested_if():
+
+    # if nested-if statement the semi-comma(;) is important to correctly parse the ast true
+    # without semicomma , we will get parser error
+
+    sql = """
+
+    IF(1=1)
+    BEGIN
+        SELECT id
+        FROM cat;
+
+        IF(2=3)
+        BEGIN
+            SELECT id
+            FROM orange;
+        END
+
+    END
+
+    """
+
+    ast = parse_one(sql=sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+    
+    assert len(output)==2
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "cat" in source
+    assert len(target)==0
+
+    (source,target) = output[1]
+
+    assert len(source)==1
+    assert "orange" in source
+    assert len(target)==0
+
+
+def test_find_source_target_table_while():
+    sql = """
+
+    WHILE(1=1)
+    BEGIN
+        SELECT id
+        FROM cat
+    END
+
+    """
+
+    ast = parse_one(sql=sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+        
+    assert len(output)==1
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "cat" in source
+    assert len(target)==0
 
 def test_physical_column():
     sql = """
@@ -574,6 +826,7 @@ def tests():
     test_find_source_target_table_drop()
     test_find_source_target_table_cte_delete_condition()
     test_find_source_target_table_create_table()
+    
 
     test_has_table()
     test_has_no_table()
@@ -584,5 +837,12 @@ def tests():
 
     test_physical_column()
 
+    test_find_source_target_table_if()
+    test_find_source_target_table_if_else()
+    test_find_source_target_table_if_elseif()
+    test_find_source_target_table_if_elseif_else()
+    test_find_source_target_table_nested_if()
+    test_find_source_target_table_while()
+    
 if __name__=="__main__":
     tests()
