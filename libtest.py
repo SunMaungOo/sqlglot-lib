@@ -1,6 +1,6 @@
 from lib import find_base_tables,find_cte_dependencies,find_table_relationship
 from lib import find_source_target_table,has_table,find_parseable_ast,find_physical_column
-from sqlglot import parse_one,parse
+from sqlglot import parse_one,parse,exp
 
 
 def test_find_base_tables():
@@ -1042,6 +1042,122 @@ def test_find_source_target_table_try_catch_multi_statement():
     assert len(target)==1
     assert "orange" in target
 
+def test_find_parseable_ast_transaction_marker():
+
+    sql = """
+
+    BEGIN TRANSACTION;
+
+    INSERT INTO dog(id) 
+    SELECT id 
+    FROM cat;
+    
+    COMMIT TRANSACTION;
+
+    """
+    asts = parse(sql=sql, dialect="tsql")
+
+    parseable_ast = find_parseable_ast(asts=asts)
+
+    #remove transaction marker from ast
+
+    assert len(parseable_ast)==1
+    assert isinstance(parseable_ast[0],exp.Insert)
+
+def test_find_source_target_table_transaction():
+
+    sql = """
+
+
+    BEGIN TRANSACTION;
+
+    INSERT INTO dog(id) 
+    SELECT id 
+    FROM cat;
+    
+    COMMIT TRANSACTION;
+
+    """
+
+    asts = parse(sql=sql, dialect="tsql")
+
+    parseable_ast = find_parseable_ast(asts=asts)
+
+    output = find_source_target_table(ast=parseable_ast[0])
+    
+    assert len(output)==1
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "cat" in source
+    assert len(target)==1
+    assert "dog" in target
+
+
+
+def test_find_source_target_table_try_catch_transaction():
+
+    sql = """
+
+    BEGIN TRY
+
+        BEGIN TRANSACTION;
+
+        INSERT INTO dog(id) 
+        SELECT id 
+        FROM cat;
+
+        COMMIT TRANSACTION;
+
+    END TRY
+    BEGIN CATCH
+
+        ROLLBACK TRANSACTION;
+
+        INSERT INTO apple(id)
+        SELECT id
+        FROM orange;
+
+
+    END CATCH
+    """
+
+    asts = parse(sql=sql, dialect="tsql")
+
+    parseable_ast = find_parseable_ast(asts=asts)
+
+    # 4 because of try body , try body insert , catch body , catch body insert
+
+    assert len(parseable_ast)==4
+
+    # try body insert
+
+    output = find_source_target_table(ast=parseable_ast[1])
+
+    assert len(output)==1
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "cat" in source
+    assert len(target)==1
+    assert "dog" in target
+
+    # catch body insert
+    
+    output = find_source_target_table(ast=parseable_ast[3])
+
+    assert len(output)==1
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "orange" in source
+    assert len(target)==1
+    assert "apple" in target
+
+
 def tests():
 
     test_find_base_tables()
@@ -1084,6 +1200,11 @@ def tests():
     test_find_source_target_table_try()
     test_find_source_target_table_try_catch()
     test_find_source_target_table_try_catch_multi_statement()
+
+    test_find_parseable_ast_transaction_marker()
+
+    test_find_source_target_table_try_catch_transaction()
+    test_find_source_target_table_transaction()
 
 if __name__=="__main__":
     tests()

@@ -126,6 +126,8 @@ def find_source_target_table(ast:Expression)->List[Tuple[Set[str],List[str]]]:
         (source,target) = internal_find_select_statement_source_target(ast)
     elif internal_is_rename_table(ast):
         (source,target) = internal_find_rename_table_source_target(ast)
+    elif internal_is_transaction(ast):
+        return output
     elif isinstance(ast,exp.Block):
 
         for expression in ast.expressions:
@@ -614,6 +616,8 @@ def internal_is_dml_or_ddl(ast:Expression)->bool:
 def internal_is_insert_into(ast:Expression)->bool:
     return ast.find(exp.Insert) is not None
 
+def internal_is_transaction(ast:Expression)->bool:
+    return isinstance(ast,(exp.Transaction,exp.Commit,exp.Rollback))
 
 def find_parseable_ast(asts:List[Expression])->List[Expression]:
     """
@@ -628,17 +632,29 @@ def find_parseable_ast(asts:List[Expression])->List[Expression]:
 
         if ast is None:
             continue
+        
+        # we still need to get try body
 
         if internal_is_try(ast):
             parseable_ast.append(ast)
             continue
-
+        
+        # we need to get catch body
+        
         if internal_is_catch(ast):
             parseable_ast.append(ast)
             continue
 
+        # skip if it the transaction marker
+
+        if internal_is_transaction(ast):
+            continue
+
         if has_table(ast):
             parseable_ast.append(ast)
+            continue
+
+        if isinstance(ast,exp.Command):
             continue
 
     return parseable_ast
