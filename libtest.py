@@ -1157,6 +1157,68 @@ def test_find_source_target_table_try_catch_transaction():
     assert len(target)==1
     assert "apple" in target
 
+def test_find_parseable_ast_set():
+    sql = """
+
+    SET @foo = SELECT COUNT(*) FROM dog;
+
+    """
+
+    ast = parse(sql=sql,dialect="tsql")
+
+    assert len(find_parseable_ast(ast))==1
+
+
+def test_find_source_target_table_set():
+
+    sql = """
+
+    SET @foo = SELECT COUNT(*) FROM dog;
+
+    """
+
+    ast = parse_one(sql=sql,dialect="tsql")
+    
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "dog" in source
+    assert len(target)==0
+
+def test_find_parseable_ast_declare():
+    
+    sql = """
+
+    DECLARE @foo int = SELECT COUNT(*) FROM dog;
+
+    """
+
+    ast = parse(sql=sql,dialect="tsql")
+
+    assert len(find_parseable_ast(ast))==1
+    
+def test_find_source_target_table_declare():
+    sql = """
+
+    DECLARE @foo int = SELECT COUNT(*) FROM dog;
+
+    """
+
+    ast = parse_one(sql=sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "dog" in source
+    assert len(target)==0
 
 def tests():
 
@@ -1205,6 +1267,12 @@ def tests():
 
     test_find_source_target_table_try_catch_transaction()
     test_find_source_target_table_transaction()
+
+    test_find_parseable_ast_set()
+    test_find_source_target_table_set()
+
+    test_find_parseable_ast_declare()
+    test_find_source_target_table_declare()
 
 if __name__=="__main__":
     tests()

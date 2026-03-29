@@ -112,9 +112,12 @@ def find_source_target_table(ast:Expression)->List[Tuple[Set[str],List[str]]]:
     target:List[str] = list()
 
     output:List[Tuple[Set[str],List[str]]] = list()
-
     
-    if internal_is_branch(ast):
+    if internal_is_set(ast):
+        return internal_find_set_source_target(ast)
+    if internal_is_declare(ast):
+        return internal_find_declare_source_target(ast)
+    elif internal_is_branch(ast):
         return internal_find_branch_source_target(ast)
     elif internal_is_merge(ast):
         (source,target) = internal_find_merge_source_target(ast)
@@ -129,7 +132,6 @@ def find_source_target_table(ast:Expression)->List[Tuple[Set[str],List[str]]]:
     elif internal_is_transaction(ast):
         return output
     elif isinstance(ast,exp.Block):
-
         for expression in ast.expressions:
             output.extend(find_source_target_table(ast=expression))
             
@@ -222,6 +224,28 @@ def internal_is_catch(ast:Expression)->bool:
     
     return bool(re.search(r'BEGIN\s+CATCH', expression_text, re.IGNORECASE))
 
+def internal_is_declare(ast:Expression)->bool:
+    """
+    Check whether it is the declare statement which also set the value
+    """
+    command = ast.find(exp.Command)
+
+    if command is None:
+        return False
+    
+    if command.name.upper()!="DECLARE":
+        return False
+    
+    expression = command.expression
+
+    if expression is None:
+        return False
+    
+    literal = str(expression)
+
+    return len(split_empty_array(text=literal,sep="="))>=2
+
+
 def internal_is_rename_table(ast:Expression)->bool:
     """
     Check if it contain the rename table statement
@@ -269,6 +293,9 @@ def internal_is_branch(ast:Expression)->bool:
 
 def internal_is_merge(ast:Expression)->bool:
     return ast.find(exp.Merge) is not None
+
+def internal_is_set(ast:Expression)->bool:
+    return ast.find(exp.Set) is not None
 
 def split_empty_array(text:str,sep:str)->List[str]:
     """
@@ -333,6 +360,21 @@ def internal_find_merge_source_target(ast:Expression)->Tuple[Set[str],List[str]]
 
     return (source,target)
 
+def internal_find_set_source_target(ast:Expression)->List[Tuple[Set[str],List[str]]]:
+    """
+    List[(Set of source table name, List of target table name)]
+    """
+    output:List[Tuple[Set[str],List[str]]] = list()
+
+    set_item_expression = ast.find(exp.SetItem)
+
+    if set_item_expression is None:
+        return list()
+    
+    for select_expression in set_item_expression.find_all(exp.Select):
+        output.extend(find_source_target_table(select_expression))
+
+    return output
 
 
 def internal_find_branch_source_target(ast:Expression)->List[Tuple[Set[str],List[str]]]:
@@ -366,6 +408,32 @@ def internal_find_branch_source_target(ast:Expression)->List[Tuple[Set[str],List
     elif while_block is not None:
         for expression in while_block.args["body"].expressions:
             output.extend(find_source_target_table(ast=expression))
+    
+    return output
+
+def internal_find_declare_source_target(ast:Expression)->List[Tuple[Set[str],List[str]]]:
+    """
+    List[(Set of source table name, List of target table name)]
+    """
+    output:List[Tuple[Set[str],List[str]]] = list()
+
+    if not internal_is_declare(ast):
+        return list()
+    
+    command = ast.find(exp.Command)
+
+    expression = command.expression
+
+    literal = str(expression)
+
+    blocks = split_empty_array(text=literal,sep="=")
+
+    declare_body = "".join(blocks[1:])
+
+    inner_asts = parse(declare_body,dialect="tsql")
+            
+    for inner_ast in find_parseable_ast(asts=inner_asts):
+        output.extend(find_source_target_table(inner_ast))
     
     return output
 
@@ -622,7 +690,7 @@ def internal_is_transaction(ast:Expression)->bool:
 def find_parseable_ast(asts:List[Expression])->List[Expression]:
     """
     Get the ast we can parse. 
-    Ignore statement like DECLARE , SET , and non table related statement
+    Ignore statement with non table related statement
     Return list[AST]
     """
 
@@ -642,6 +710,14 @@ def find_parseable_ast(asts:List[Expression])->List[Expression]:
         # we need to get catch body
         
         if internal_is_catch(ast):
+            parseable_ast.append(ast)
+            continue
+
+        if internal_is_set(ast):
+            parseable_ast.append(ast)
+            continue
+
+        if internal_is_declare(ast):
             parseable_ast.append(ast)
             continue
 
