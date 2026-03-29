@@ -147,6 +147,10 @@ def find_source_target_table(ast:Expression)->List[Tuple[Set[str],List[str]]]:
 
             target = [table_name]
 
+        elif internal_is_truncate(ast):
+
+            target = [find_base_tables(ast).pop()] 
+            
         else:
             
             table_name = internal_find_update_node_table_name(ast)
@@ -687,6 +691,9 @@ def internal_is_insert_into(ast:Expression)->bool:
 def internal_is_transaction(ast:Expression)->bool:
     return isinstance(ast,(exp.Transaction,exp.Commit,exp.Rollback))
 
+def internal_is_truncate(ast:Expression)->bool:
+    return ast.find(exp.TruncateTable) is not None
+
 def find_parseable_ast(asts:List[Expression])->List[Expression]:
     """
     Get the ast we can parse. 
@@ -718,6 +725,10 @@ def find_parseable_ast(asts:List[Expression])->List[Expression]:
             continue
 
         if internal_is_declare(ast):
+            parseable_ast.append(ast)
+            continue
+        
+        if internal_is_truncate(ast):
             parseable_ast.append(ast)
             continue
 

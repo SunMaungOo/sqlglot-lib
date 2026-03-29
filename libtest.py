@@ -1220,6 +1220,38 @@ def test_find_source_target_table_declare():
     assert "dog" in source
     assert len(target)==0
 
+def test_find_parseable_ast_truncate():
+    
+    sql = """
+
+    TRUNCATE TABLE foo;
+
+    """
+
+    ast = parse(sql=sql)
+
+    assert len(find_parseable_ast(ast))==1
+
+def test_find_source_target_table_truncate():
+    
+    sql = """
+
+    TRUNCATE TABLE dog;
+
+    """
+
+    ast = parse_one(sql=sql)
+
+    output = find_source_target_table(ast=ast)
+
+    assert len(output)==1
+
+    (source,target) = output[0]
+    
+    assert len(source)==0
+    assert len(target)==1
+    assert "dog" in target
+
 def tests():
 
     test_find_base_tables()
@@ -1273,6 +1305,9 @@ def tests():
 
     test_find_parseable_ast_declare()
     test_find_source_target_table_declare()
+
+    test_find_parseable_ast_truncate()
+    test_find_source_target_table_truncate()
 
 if __name__=="__main__":
     tests()
