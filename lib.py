@@ -1,8 +1,9 @@
-from sqlglot import parse_one,exp,optimizer
+from sqlglot import parse_one,exp,optimizer,parse
 from sqlglot.optimizer import traverse_scope
 from sqlglot.optimizer.scope import build_scope
 from typing import Set,Dict,List,Tuple,Optional
 from sqlglot.expressions import Expression
+import re
 
 
 def find_base_tables(ast:Expression)->Set[str]:
@@ -112,13 +113,24 @@ def find_source_target_table(ast:Expression)->List[Tuple[Set[str],List[str]]]:
 
     output:List[Tuple[Set[str],List[str]]] = list()
 
+    
     if internal_is_branch(ast):
         return internal_find_branch_source_target(ast)
+    elif internal_is_merge(ast):
+        (source,target) = internal_find_merge_source_target(ast)
+    elif internal_is_try(ast):
+        return internal_find_try_source_target(ast)
+    elif internal_is_catch(ast):
+        return internal_find_catch_source_target(ast)
     elif internal_is_contain_select(ast) and not internal_is_dml_or_ddl(ast):
         (source,target) = internal_find_select_statement_source_target(ast)
     elif internal_is_rename_table(ast):
         (source,target) = internal_find_rename_table_source_target(ast)
+    elif isinstance(ast,exp.Block):
 
+        for expression in ast.expressions:
+            output.extend(find_source_target_table(ast=expression))
+            
     else:
 
         if internal_is_insert_into(ast):
@@ -170,7 +182,43 @@ def has_table(ast:Expression)->bool:
 
     return internal_is_contain_select(ast) or\
           internal_is_dml_or_ddl(ast) or\
-          internal_is_rename_table(ast)
+          internal_is_rename_table(ast) or\
+          internal_is_merge(ast)
+
+def internal_is_try(ast:Expression)->bool:
+    """
+    Check whether it start with BEGIN TRY
+    """
+    command_expression = ast
+
+    if isinstance(ast,exp.Block):
+        command_expression = ast.expressions[1]
+    
+    if not isinstance(command_expression,exp.Command):
+        return False
+    
+    if command_expression.name!="BEGIN":
+        return False
+        
+    expression_text = str(command_expression.expression).strip()
+
+    return expression_text.upper().startswith("TRY")
+
+def internal_is_catch(ast:Expression)->bool:
+    """
+    Check whether it is BEGIN CATCH
+    """
+    command_expression = ast
+
+    if isinstance(ast,exp.Block):
+        command_expression = ast.expressions[0]
+    
+    if not isinstance(command_expression,exp.Command):
+        return False
+    
+    expression_text = str(command_expression.expression).strip()
+    
+    return bool(re.search(r'BEGIN\s+CATCH', expression_text, re.IGNORECASE))
 
 def internal_is_rename_table(ast:Expression)->bool:
     """
@@ -217,6 +265,9 @@ def internal_is_branch(ast:Expression)->bool:
     return ast.find(exp.IfBlock) is not None or\
     ast.find(exp.WhileBlock) is not None
 
+def internal_is_merge(ast:Expression)->bool:
+    return ast.find(exp.Merge) is not None
+
 def split_empty_array(text:str,sep:str)->List[str]:
     """
     Split while removing the empty block
@@ -234,6 +285,53 @@ def split_empty_array(text:str,sep:str)->List[str]:
 
 
     return new_blocks
+
+def internal_find_merge_source_target(ast:Expression)->Tuple[Set[str],List[str]]:
+    """
+    List[(Set of source table name, List of target table name)]
+    """
+    merge = ast.find(exp.Merge)
+
+    source:Set[str] = set()
+
+    target:List[str] = list()
+
+    if merge is None:
+        return (source,target)
+    
+    target_table_node = merge.this
+
+    if isinstance(target_table_node,exp.Table):
+        target.append(internal_get_table_name(target_table_node))
+    
+    ctes:Dict[str,List[str]] = find_cte_dependencies(ast)
+
+    using_node = merge.args.get("using")
+
+    if using_node is not None:
+
+        for table_expression in using_node.find_all(exp.Table):
+
+            table_name = table_expression.name
+
+            # expand the base table of cte
+
+            if table_name in ctes:
+                source = source.union(ctes[table_name])
+            else:
+                source.add(internal_get_table_name(table_expression))
+
+
+
+    # make sure target table is not listed as its own source
+
+    for table in target:
+        source.discard(table)
+    
+
+    return (source,target)
+
+
 
 def internal_find_branch_source_target(ast:Expression)->List[Tuple[Set[str],List[str]]]:
     """
@@ -267,6 +365,72 @@ def internal_find_branch_source_target(ast:Expression)->List[Tuple[Set[str],List
         for expression in while_block.args["body"].expressions:
             output.extend(find_source_target_table(ast=expression))
     
+    return output
+
+def internal_find_try_source_target(ast:Expression)->List[Tuple[Set[str],List[str]]]:
+    """
+    List[(Set of source table name, List of target table name)]
+    """
+    output:List[Tuple[Set[str],List[str]]] = list()
+    
+    if not isinstance(ast,exp.Command):
+        return list()
+
+    expression_text = str(ast.expression)
+
+    # remove TRY prefix and whitespace and new line
+
+    try_body = re.sub(r'^\s*TRY\s*\n?',\
+                      '',\
+                    expression_text,\
+                    flags=re.IGNORECASE).strip()
+
+    if try_body:
+        try:
+            inner_asts = parse(try_body,dialect="tsql")
+            
+            for inner_ast in find_parseable_ast(asts=inner_asts):
+                output.extend(find_source_target_table(inner_ast))
+        except Exception:
+            pass
+
+    
+    return output
+
+def internal_find_catch_source_target(ast:Expression)->List[Tuple[Set[str],List[str]]]:
+    """
+    List[(Set of source table name, List of target table name)]
+    """
+    output:List[Tuple[Set[str],List[str]]] = list()
+
+    if not isinstance(ast,exp.Command):
+        return list()
+
+    expression_text = str(ast.expression)
+
+    parts = re.split(r'BEGIN\s+CATCH\s*\n?',\
+                     expression_text,\
+                    flags=re.IGNORECASE)
+
+    if len(parts)<2:
+        return output
+
+    catch_body = parts[-1].strip()
+
+    # there is weird single quote at end 
+
+    catch_body = catch_body.removesuffix("'")
+
+    if catch_body:
+
+        try:
+            inner_asts = parse(catch_body,dialect="tsql")
+            
+            for inner_ast in find_parseable_ast(asts=inner_asts):
+                output.extend(find_source_target_table(inner_ast))
+        except Exception:
+            pass
+
     return output
 
 def internal_find_rename_table_source_target(ast:Expression)->Tuple[Set[str],List[str]]:
@@ -457,7 +621,28 @@ def find_parseable_ast(asts:List[Expression])->List[Expression]:
     Ignore statement like DECLARE , SET , and non table related statement
     Return list[AST]
     """
-    return [ast for ast in asts if ast is not None and has_table(ast)]
+
+    parseable_ast:List[Expression] = list()
+
+    for ast in asts:
+
+        if ast is None:
+            continue
+
+        if internal_is_try(ast):
+            parseable_ast.append(ast)
+            continue
+
+        if internal_is_catch(ast):
+            parseable_ast.append(ast)
+            continue
+
+        if has_table(ast):
+            parseable_ast.append(ast)
+            continue
+
+    return parseable_ast
+
 
 def internal_get_table_name(table_expression:Expression)->str:
     """

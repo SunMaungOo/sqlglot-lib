@@ -444,6 +444,24 @@ def test_has_table():
 
     assert has_table(ast)
 
+def test_has_table_merge():
+    
+    sql = """
+
+    MERGE INTO target_table 
+    USING source_table
+    ON target_table.id = source_table.id
+    WHEN MATCHED THEN 
+    UPDATE SET target_table.value = source_table.value
+    WHEN NOT MATCHED THEN 
+    INSERT (id,value) VALUES(source_table.id,source_table.value)
+
+    """
+
+    ast = parse_one(sql=sql,dialect="tsql")
+
+    assert has_table(ast)
+
 def test_find_parseable_ast():
 
     sql = """
@@ -806,10 +824,226 @@ def test_physical_column():
         assert first_item in expected_dict
         assert second_item in expected_dict[first_item]
 
+def test_find_source_target_table_merge():
 
+    sql = """
 
+    MERGE INTO target_table 
+    USING source_table
+    ON target_table.id = source_table.id
+    WHEN MATCHED THEN 
+    UPDATE SET target_table.value = source_table.value
+    WHEN NOT MATCHED THEN 
+    INSERT (id,value) VALUES(source_table.id,source_table.value)
+
+    """
+    
+    ast = parse_one(sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+        
+    assert len(output)==1
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "source_table" in source
+    assert len(target)==1
+    assert "target_table" in target
+
+def test_find_source_target_table_merge_alias():
+
+    sql = """
+
+    MERGE INTO target_table AS target
+    USING source_table AS source
+    ON target.id = source.id
+    WHEN MATCHED THEN 
+    UPDATE SET target.value = source.value
+    WHEN NOT MATCHED THEN 
+    INSERT (id,value) VALUES(source.id,source.value)
+
+    """
+    
+    ast = parse_one(sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+        
+    assert len(output)==1
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "source_table" in source
+    assert len(target)==1
+    assert "target_table" in target
+
+def test_find_source_target_table_merge_cte():
+
+    sql = """
+
+    WITH source_table AS 
+    (
+        SELECT id,
+        value
+        FROM dog
+    )
+    MERGE INTO target_table 
+    USING source_table
+    ON target_table.id = source_table.id
+    WHEN MATCHED THEN 
+    UPDATE SET target_table.value = source_table.value
+    WHEN NOT MATCHED THEN 
+    INSERT (id,value) VALUES(source_table.id,source_table.value)
+
+    """
+    
+    ast = parse_one(sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+        
+    assert len(output)==1
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "dog" in source
+    assert len(target)==1
+    assert "target_table" in target
+
+def test_find_source_target_table_try():
+
+    sql = """
+
+    BEGIN TRY
+
+        INSERT INTO dog(id)
+        SELECT id 
+        FROM cat;
+
+    END TRY
+
+    """
+
+    ast = parse_one(sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+        
+    assert len(output)==1
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "cat" in source
+    assert len(target)==1
+    assert "dog" in target
+
+def test_find_source_target_table_try_catch():
+
+    sql = """
+
+    BEGIN TRY
+
+        INSERT INTO dog(id)
+        SELECT id 
+        FROM cat;
+
+    END TRY
+
+    BEGIN CATCH
+
+        INSERT INTO people(id)
+        SELECT id 
+        FROM dog;
+
+    END CATCH
+    """
+
+    ast = parse_one(sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+    
+    assert len(output)==2
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "cat" in source
+    assert len(target)==1
+    assert "dog" in target
+
+    (source,target) = output[1]
+
+    assert len(source)==1
+    assert "dog" in source
+    assert len(target)==1
+    assert "people" in target
+
+def test_find_source_target_table_try_catch_multi_statement():
+
+    sql = """
+
+    BEGIN TRY
+
+        INSERT INTO dog(id)
+        SELECT id 
+        FROM cat;
+
+        INSERT INTO fish(id)
+        SELECT id
+        FROM dog;
+
+    END TRY
+
+    BEGIN CATCH
+
+        INSERT INTO people(id)
+        SELECT id 
+        FROM dog;
+
+        INSERT INTO orange(id)
+        SELECT id
+        FROM apple;
+
+    END CATCH
+    """
+
+    ast = parse_one(sql,dialect="tsql")
+
+    output = find_source_target_table(ast=ast)
+    
+    assert len(output)==4
+
+    (source,target) = output[0]
+
+    assert len(source)==1
+    assert "cat" in source
+    assert len(target)==1
+    assert "dog" in target
+
+    (source,target) = output[1]
+    
+    assert len(source)==1
+    assert "dog" in source
+    assert len(target)==1
+    assert "fish" in target
+
+    (source,target) = output[2]
+
+    assert len(source)==1
+    assert "dog" in source
+    assert len(target)==1
+    assert "people" in target
+
+    (source,target) = output[3]
+
+    assert len(source)==1
+    assert "apple" in source
+    assert len(target)==1
+    assert "orange" in target
 
 def tests():
+
     test_find_base_tables()
     test_find_cte_dependencies()
     test_find_table_relationship()
@@ -830,19 +1064,26 @@ def tests():
 
     test_has_table()
     test_has_no_table()
+    test_has_table_merge()
 
     test_find_parseable_ast()
 
     test_find_source_target_table_single_insert_into_with_database_schema()
 
     test_physical_column()
-
     test_find_source_target_table_if()
     test_find_source_target_table_if_else()
     test_find_source_target_table_if_elseif()
     test_find_source_target_table_if_elseif_else()
     test_find_source_target_table_nested_if()
     test_find_source_target_table_while()
-    
+    test_find_source_target_table_merge()
+    test_find_source_target_table_merge_alias()
+    test_find_source_target_table_merge_cte()
+
+    test_find_source_target_table_try()
+    test_find_source_target_table_try_catch()
+    test_find_source_target_table_try_catch_multi_statement()
+
 if __name__=="__main__":
     tests()
