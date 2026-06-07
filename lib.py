@@ -142,6 +142,8 @@ def find_column_lineage(ast:Expression,metadata:Metadata,dialect="tsql")->List[C
 
     if internal_is_insert_into(ast):
         lineage = internal_find_insert_into_column_lineage(ast=ast)
+    elif ast.find(exp.Update):
+        lineage = internal_find_update_column_lineage(ast=ast)
     elif internal_is_contain_select(ast=ast):
         lineage = internal_find_select_column_lineage(ast=ast)
 
@@ -171,6 +173,66 @@ def find_ambiguous_column_lineage(column_lineage:List[ColumnLineage])->Dict[str,
         for key, value in grouped.items()\
         if len(value) > 1
     }
+
+def internal_find_update_column_lineage(ast:Expression)->List[ColumnLineage]:
+    
+    # ast = update node
+
+    lineage:List[ColumnLineage] = list()
+
+    target_table = internal_find_update_node_table_name(ast=ast)
+
+    if target_table is None:
+        return list()
+    
+    #exclude update target table name from map
+    # key = alias name , value = full table name
+
+    alias_map:Dict[str,str] = {
+        table.alias_or_name:internal_get_table_name(table)
+        for table in ast.find_all(exp.Table)
+        if table.alias_or_name!=target_table
+    }
+
+    for node in ast.expressions:
+
+        if not isinstance(node,exp.EQ):
+            continue
+        
+        equal_node = node
+        
+        update_left_side = equal_node.left
+
+        update_right_side = equal_node.right
+
+        if not isinstance(update_left_side,exp.Column):
+            continue
+
+        target_column = update_left_side.name
+
+        for column in update_right_side.find_all(exp.Column):
+
+            source_table = alias_map[column.table]
+
+            source_column = column.name
+
+            transformation = None
+
+            if not isinstance(update_right_side,exp.Column):
+                transformation = update_right_side.sql()
+
+            lineage.append(
+                ColumnLineage(
+                    source_table=source_table,
+                    source_column=source_column,
+                    target_table=target_table,
+                    target_column=target_column,
+                    compute_column=transformation
+                )
+            )
+             
+    return lineage
+
 
 def internal_find_insert_into_column_lineage(ast:Expression)->List[ColumnLineage]:
     

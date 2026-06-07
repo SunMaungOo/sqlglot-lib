@@ -1954,6 +1954,72 @@ def test_find_column_lineage_insert_into_compute_column():
     assert cat_lineage[1].target_column=="c3"
     assert cat_lineage[1].compute_column is not None
 
+def test_find_column_lineage_update():
+    
+    metadata_objects:List[MetadataObject] = list()
+    metadata_objects.append(
+        MetadataObject(
+            schema="test",\
+            name="dog",\
+            columns=[
+                "id",\
+                "age"
+            ]
+        )
+    )
+    metadata_objects.append(
+        MetadataObject(
+            schema="test",\
+            name="cat",\
+            columns=[
+                "id",\
+                "age"
+            ]
+        )
+    )
+
+    
+    sql = """
+
+    UPDATE foo
+    SET c1 = dog.id,
+    c2 = cat.id,
+    c3 = SUM(dog.id) + SUM(cat.id)
+    FROM test.dog
+    INNER JOIN test.cat
+    ON dog.id = cat.id
+    """
+
+    ast = parse_one(sql=sql)
+
+    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+                                            database="myDb",
+                                            objects=metadata_objects))
+    
+    dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
+
+    assert len(dog_lineage)==2
+    assert dog_lineage[0].source_column=="id"
+    assert dog_lineage[0].target_table=="foo"
+    assert dog_lineage[0].target_column=="c1"
+    assert dog_lineage[0].compute_column is None
+    assert dog_lineage[1].source_column=="id"
+    assert dog_lineage[1].target_table=="foo"
+    assert dog_lineage[1].target_column=="c3"
+    assert dog_lineage[1].compute_column is not None
+
+    cat_lineage = [x for x in lineage if x.source_table=="test.cat"]
+
+    assert len(cat_lineage)==2
+    assert cat_lineage[0].source_column=="id"
+    assert cat_lineage[0].target_table=="foo"
+    assert cat_lineage[0].target_column=="c2"
+    assert cat_lineage[0].compute_column is None
+    assert cat_lineage[1].source_column=="id"
+    assert cat_lineage[1].target_table=="foo"
+    assert cat_lineage[1].target_column=="c3"
+    assert cat_lineage[1].compute_column is not None
+
 def tests():
 
     test_find_base_tables()
@@ -2024,6 +2090,8 @@ def tests():
     
     test_find_column_lineage_insert_into()
     test_find_column_lineage_insert_into_compute_column()
+
+    test_find_column_lineage_update()
 
 if __name__=="__main__":
     tests()
