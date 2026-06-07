@@ -140,7 +140,9 @@ def find_column_lineage(ast:Expression,metadata:Metadata,dialect="tsql")->List[C
     except Exception:
         pass
 
-    if internal_is_contain_select(ast=ast):
+    if internal_is_insert_into(ast):
+        lineage = internal_find_insert_into_column_lineage(ast=ast)
+    elif internal_is_contain_select(ast=ast):
         lineage = internal_find_select_column_lineage(ast=ast)
 
 
@@ -169,6 +171,64 @@ def find_ambiguous_column_lineage(column_lineage:List[ColumnLineage])->Dict[str,
         for key, value in grouped.items()\
         if len(value) > 1
     }
+
+def internal_find_insert_into_column_lineage(ast:Expression)->List[ColumnLineage]:
+    
+    lineage:List[ColumnLineage] = list()
+
+    # ast = insert node
+
+    insert_table_name = internal_find_insert_into_node_table_name(ast=ast)
+
+    if insert_table_name is None:
+        return list()
+    
+    target_columns:List[str] = list()
+
+    if isinstance(ast.this,exp.Schema):
+
+        schema_node = ast.this
+
+        # get the column name from INSERT INTO foo(c1,c2)
+
+        target_columns = [column.name for column in schema_node.find_all(exp.Identifier)]
+
+    if len(target_columns)==0:
+        return list()
+
+    select_statement = ast.find(exp.Select)
+
+    if select_statement is None:
+        return list()
+
+    for index,expression in enumerate(select_statement):
+
+        target_column = internal_get_output_alias_or_column(expression)
+
+        if index<len(target_columns):
+            target_column = target_columns[index]
+
+        for scope in traverse_scope(select_statement):
+
+            for source_table,source_column in internal_get_source_column(node=expression,scope=scope):
+
+                transformation = None
+
+                if not internal_is_direct_column_mapping(expression):
+                    transformation = expression.sql()
+
+                lineage.append(
+                    ColumnLineage(
+                        source_table=source_table,
+                        source_column=source_column,
+                        target_table=insert_table_name,
+                        target_column=target_column,
+                        compute_column=transformation
+                    )
+                )
+    
+    return lineage
+
 
 def internal_find_select_column_lineage(ast:Expression)->List[ColumnLineage]:
     """
