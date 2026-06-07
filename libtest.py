@@ -1280,9 +1280,13 @@ def test_find_column_lineage_select():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
     
     assert len(lineage)==2
 
@@ -1326,9 +1330,13 @@ def test_find_column_lineage_select_alias():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
     
     assert len(lineage)==2
 
@@ -1371,9 +1379,13 @@ def test_find_column_lineage_select_compute():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
     
     assert len(lineage)==2
 
@@ -1429,9 +1441,13 @@ def test_find_column_lineage_select_compute_different_column():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
 
     dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
 
@@ -1479,9 +1495,13 @@ def test_find_column_lineage_select_all():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
     
     assert len(lineage)==2
 
@@ -1536,9 +1556,13 @@ def test_find_column_lineage_select_all_multiple_table():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
 
     dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
 
@@ -1604,9 +1628,13 @@ def test_find_column_lineage_select_all_multiple_table_column_format():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
 
     dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
 
@@ -1673,9 +1701,13 @@ def test_find_column_lineage_select_all_multiple_table_column_format_v2():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
 
     dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
 
@@ -1736,9 +1768,13 @@ def test_find_column_lineage_select_into():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
 
     dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
 
@@ -1796,9 +1832,13 @@ def test_find_column_lineage_select_ctas():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
 
     dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
 
@@ -1858,9 +1898,13 @@ def test_find_column_lineage_insert_into():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
 
     dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
 
@@ -1923,9 +1967,13 @@ def test_find_column_lineage_insert_into_compute_column():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
                                              database="myDb",
                                              objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
     
 
     dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
@@ -1992,9 +2040,13 @@ def test_find_column_lineage_update():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
-                                            database="myDb",
-                                            objects=metadata_objects))
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+                                             database="myDb",
+                                             objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
     
     dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
 
@@ -2048,9 +2100,13 @@ def test_find_column_lineage_merge():
 
     ast = parse_one(sql=sql)
 
-    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
-                                            database="myDb",
-                                            objects=metadata_objects))
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+                                             database="myDb",
+                                             objects=metadata_objects))
+    
+    assert len(lineage_statements)==1
+
+    lineage = lineage_statements[0]
     
     dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
 
@@ -2074,6 +2130,92 @@ def test_find_column_lineage_merge():
     assert dog_lineage[3].target_table=="foo"
     assert dog_lineage[3].target_column=="total_age"
     assert dog_lineage[3].compute_column is not None
+
+def test_find_column_lineage_while():
+    
+
+    metadata_objects:List[MetadataObject] = list()
+    metadata_objects.append(
+        MetadataObject(
+            schema="test",\
+            name="dog",\
+            columns=[
+                "id",\
+                "age"
+            ]
+        )
+    )
+    metadata_objects.append(
+        MetadataObject(
+            schema="test",\
+            name="cat",\
+            columns=[
+                "id",\
+                "age"
+            ]
+        )
+    )
+
+    
+    sql = """
+
+    WHILE(1=1)
+    BEGIN
+
+        SELECT id,
+        age
+        FROM test.dog;
+
+        SELECT id,
+        age
+        FROM test.cat;
+    END
+
+
+    """
+
+    ast = parse_one(sql=sql,dialect="tsql")
+
+    lineage_statements = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+                                             database="myDb",
+                                             objects=metadata_objects))
+        
+    assert len(lineage_statements)==2
+
+    lineage = lineage_statements[0]
+ 
+    assert len(lineage)==2
+
+    source_lineage = [x for x in lineage if x.source_table=="test.dog"]
+
+    assert len(source_lineage)==2
+    assert source_lineage[0].source_column=="id"
+    assert source_lineage[0].target_table is None
+    assert source_lineage[0].target_column=="id"
+    assert source_lineage[0].compute_column is None
+
+    assert source_lineage[1].source_column=="age"
+    assert source_lineage[1].target_table is None
+    assert source_lineage[1].target_column=="age"
+    assert source_lineage[1].compute_column is None
+
+
+    lineage = lineage_statements[1]
+ 
+    assert len(lineage)==2
+
+    source_lineage = [x for x in lineage if x.source_table=="test.cat"]
+
+    assert len(source_lineage)==2
+    assert source_lineage[0].source_column=="id"
+    assert source_lineage[0].target_table is None
+    assert source_lineage[0].target_column=="id"
+    assert source_lineage[0].compute_column is None
+
+    assert source_lineage[1].source_column=="age"
+    assert source_lineage[1].target_table is None
+    assert source_lineage[1].target_column=="age"
+    assert source_lineage[1].compute_column is None
 
 def tests():
 
@@ -2149,6 +2291,8 @@ def tests():
     test_find_column_lineage_update()
 
     test_find_column_lineage_merge()
+
+    test_find_column_lineage_while()
 
 if __name__=="__main__":
     tests()

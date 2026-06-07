@@ -126,11 +126,11 @@ def find_physical_column(ast:Expression)->List[Tuple[str,str]]:
     return physical_columns
 
 
-def find_column_lineage(ast:Expression,metadata:Metadata,dialect="tsql")->List[ColumnLineage]:
+def find_column_lineage(ast:Expression,metadata:Metadata,dialect="tsql")->List[List[ColumnLineage]]:
 
     schema_mapping = internal_get_schema_mapping(metadata=metadata)
 
-    lineage:List[ColumnLineage] = list()
+    lineage:List[List[ColumnLineage]] = list()
 
     try:
 
@@ -141,13 +141,17 @@ def find_column_lineage(ast:Expression,metadata:Metadata,dialect="tsql")->List[C
         pass
     
     if internal_is_merge(ast):
-        lineage = internal_find_merge_column_lineage(ast=ast) 
+        lineage.append(internal_find_merge_column_lineage(ast=ast)) 
     elif internal_is_insert_into(ast):
-        lineage = internal_find_insert_into_column_lineage(ast=ast)
+        lineage.append(internal_find_insert_into_column_lineage(ast=ast))
     elif ast.find(exp.Update):
-        lineage = internal_find_update_column_lineage(ast=ast)
+        lineage.append(internal_find_update_column_lineage(ast=ast))
+    elif internal_is_branch(ast):
+        lineage = internal_find_branch_column_lineage(ast=ast,\
+                                                    metadata=metadata,\
+                                                    dialect=dialect)
     elif internal_is_contain_select(ast=ast):
-        lineage = internal_find_select_column_lineage(ast=ast)
+        lineage.append(internal_find_select_column_lineage(ast=ast))
 
 
     return lineage
@@ -175,6 +179,46 @@ def find_ambiguous_column_lineage(column_lineage:List[ColumnLineage])->Dict[str,
         for key, value in grouped.items()\
         if len(value) > 1
     }
+
+def internal_find_branch_column_lineage(ast:Expression,\
+                                        metadata:Metadata,\
+                                        dialect:str)->List[List[ColumnLineage]]:
+
+    output:List[List[ColumnLineage]] = list()
+
+    if_block = ast.find(exp.IfBlock)
+
+    while_block = ast.find(exp.WhileBlock)
+
+    if if_block is None and\
+        while_block is None:
+        return list()
+    
+    if if_block is not None:
+
+        if "true" in if_block.args\
+            and if_block.args["true"]:
+
+            for expression in if_block.args["true"].expressions:
+                output.extend(find_column_lineage(ast=expression,\
+                                                metadata=metadata,\
+                                                dialect=dialect))
+
+        if "false" in if_block.args\
+            and if_block.args["false"]:
+
+            for expression in if_block.args["false"].expressions:
+                output.extend(find_column_lineage(ast=expression,\
+                                            metadata=metadata,\
+                                            dialect=dialect))
+
+    elif while_block is not None:
+        for expression in while_block.args["body"].expressions:
+            output.extend(find_column_lineage(ast=expression,\
+                                            metadata=metadata,\
+                                            dialect=dialect))
+    
+    return output
 
 def internal_find_update_column_lineage(ast:Expression)->List[ColumnLineage]:
     
