@@ -139,8 +139,10 @@ def find_column_lineage(ast:Expression,metadata:Metadata,dialect="tsql")->List[C
         
     except Exception:
         pass
-
-    if internal_is_insert_into(ast):
+    
+    if internal_is_merge(ast):
+        lineage = internal_find_merge_column_lineage(ast=ast) 
+    elif internal_is_insert_into(ast):
         lineage = internal_find_insert_into_column_lineage(ast=ast)
     elif ast.find(exp.Update):
         lineage = internal_find_update_column_lineage(ast=ast)
@@ -232,6 +234,107 @@ def internal_find_update_column_lineage(ast:Expression)->List[ColumnLineage]:
             )
              
     return lineage
+
+def internal_find_merge_column_lineage(ast:Expression)->List[ColumnLineage]:
+
+    # ast = Merge
+
+    lineage:List[ColumnLineage] = list()
+
+    if not ast.find(exp.Merge):
+        return list()
+
+    merge_node = ast
+
+    target_table = internal_get_table_name(merge_node.this)
+
+    alias_map:Dict[str,str] = {
+        table.alias_or_name:internal_get_table_name(table)
+        for table in ast.find_all(exp.Table)
+        if table.alias_or_name!=target_table
+    }
+
+    for when_node in merge_node.find_all(exp.When):
+
+        then_node = when_node.args.get("then")
+
+        if then_node is None:
+            continue
+
+        if not (isinstance(then_node,exp.Update) or\
+        isinstance(then_node,exp.Insert)):
+            continue
+        
+        # WHEN MATCHED THEN UPDATE SET ... = ...
+
+        if isinstance(then_node,exp.Update):
+
+            for equal_node in then_node.find_all(exp.EQ):
+
+                update_left_side = equal_node.left
+
+                update_right_side = equal_node.right
+
+                if not isinstance(update_left_side,exp.Column):
+                    continue
+
+                target_column = update_left_side.name
+
+                transformation = None
+
+                if not internal_is_direct_column_mapping(update_right_side):
+                    transformation = update_right_side.sql()
+
+                for column in update_right_side.find_all(exp.Column):
+
+                    source_table = alias_map[column.table]
+
+                    source_column = column.name
+
+                    lineage.append(
+                        ColumnLineage(
+                            source_table=source_table,
+                            source_column=source_column,
+                            target_table=target_table,
+                            target_column=target_column,
+                            compute_column=transformation
+                        )
+                    )
+
+        # WHEN NOT MATCHED THEN INSERT (...) VALUES (...)
+
+        elif isinstance(then_node,exp.Insert):
+
+            target_columns = [column.name for column in then_node.this.expressions]
+
+            source_column_expressions = then_node.expression
+
+            for target_column,source_column_expression in zip(target_columns,source_column_expressions):
+
+                transformation = None
+
+                if not internal_is_direct_column_mapping(source_column_expression):
+                    transformation = source_column_expression.sql()
+
+                for column in source_column_expression.find_all(exp.Column):
+
+                    source_table = alias_map[column.table]
+
+                    source_column = column.name
+
+                    lineage.append(
+                        ColumnLineage(
+                            source_table=source_table,
+                            source_column=source_column,
+                            target_table=target_table,
+                            target_column=target_column,
+                            compute_column=transformation
+                        )
+                    )
+
+            
+    return lineage
+
 
 
 def internal_find_insert_into_column_lineage(ast:Expression)->List[ColumnLineage]:

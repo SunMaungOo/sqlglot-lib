@@ -2020,6 +2020,61 @@ def test_find_column_lineage_update():
     assert cat_lineage[1].target_column=="c3"
     assert cat_lineage[1].compute_column is not None
 
+def test_find_column_lineage_merge():
+    
+    metadata_objects:List[MetadataObject] = list()
+    metadata_objects.append(
+        MetadataObject(
+            schema="test",\
+            name="dog",\
+            columns=[
+                "id",\
+                "age"
+            ]
+        )
+    )
+
+    sql = """
+
+    MERGE INTO foo 
+    USING test.dog
+    ON foo.id = dog.id
+    WHEN MATCHED THEN 
+    UPDATE SET foo.value = dog.value
+    WHEN NOT MATCHED THEN 
+    INSERT (id,age,total_age) VALUES(dog.id,dog.age,SUM(dog.age))
+
+    """
+
+    ast = parse_one(sql=sql)
+
+    lineage = find_column_lineage(ast=ast,metadata=Metadata(host="myHost",\
+                                            database="myDb",
+                                            objects=metadata_objects))
+    
+    dog_lineage = [x for x in lineage if x.source_table=="test.dog"]
+
+    assert len(dog_lineage)==4
+    assert dog_lineage[0].source_column=="value"
+    assert dog_lineage[0].target_table=="foo"
+    assert dog_lineage[0].target_column=="value"
+    assert dog_lineage[0].compute_column is None
+
+    assert dog_lineage[1].source_column=="id"
+    assert dog_lineage[1].target_table=="foo"
+    assert dog_lineage[1].target_column=="id"
+    assert dog_lineage[1].compute_column is None
+
+    assert dog_lineage[2].source_column=="age"
+    assert dog_lineage[2].target_table=="foo"
+    assert dog_lineage[2].target_column=="age"
+    assert dog_lineage[2].compute_column is None
+
+    assert dog_lineage[3].source_column=="age"
+    assert dog_lineage[3].target_table=="foo"
+    assert dog_lineage[3].target_column=="total_age"
+    assert dog_lineage[3].compute_column is not None
+
 def tests():
 
     test_find_base_tables()
@@ -2092,6 +2147,8 @@ def tests():
     test_find_column_lineage_insert_into_compute_column()
 
     test_find_column_lineage_update()
+
+    test_find_column_lineage_merge()
 
 if __name__=="__main__":
     tests()
