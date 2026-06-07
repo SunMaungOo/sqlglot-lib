@@ -1,9 +1,34 @@
 from sqlglot import parse_one,exp,optimizer,parse
-from sqlglot.optimizer import traverse_scope
+from sqlglot.optimizer import traverse_scope,Scope
 from sqlglot.optimizer.scope import build_scope
 from typing import Set,Dict,List,Tuple,Optional
 from sqlglot.expressions import Expression
 import re
+from dataclasses import dataclass
+from sqlglot.schema import MappingSchema
+from collections import defaultdict
+
+@dataclass(frozen=True)
+class Metadata:
+    host:str
+    database:str
+    objects:List[MetadataObject]
+
+@dataclass(frozen=True)
+class MetadataObject:
+    schema:str
+    name:str
+    columns:List[str]
+
+@dataclass(frozen=True)
+class ColumnLineage:
+    #schema.table format
+    source_table:str
+    source_column:str
+    target_table:Optional[str]
+    target_column:str 
+    # raw sql expression if it is compute column
+    compute_column:Optional[str] 
 
 
 def find_base_tables(ast:Expression)->Set[str]:
@@ -99,6 +124,168 @@ def find_physical_column(ast:Expression)->List[Tuple[str,str]]:
                 physical_columns.append((scope.sources.get(column.table).name , column.name))
 
     return physical_columns
+
+
+def find_column_lineage(ast:Expression,metadata:Metadata,dialect="tsql")->List[ColumnLineage]:
+
+    schema_mapping = internal_get_schema_mapping(metadata=metadata)
+
+    lineage:List[ColumnLineage] = list()
+
+    try:
+
+        ast = optimizer.qualify_tables.qualify_tables(ast, dialect=dialect)
+        ast = optimizer.qualify_columns.qualify_columns(ast, schema_mapping, dialect=dialect)
+        
+    except Exception:
+        pass
+
+    if internal_is_contain_select(ast=ast):
+        lineage = internal_find_select_column_lineage(ast=ast)
+
+
+    return lineage
+
+def find_ambiguous_column_lineage(column_lineage:List[ColumnLineage])->Dict[str,List[ColumnLineage]]:
+    """
+    Ambiguous column = column lineage which goes to same target column from different source table
+
+    key = target column
+
+    """
+
+    # Same column from different source system goes to same non-compute target column of the target 
+
+    non_compute_columns = [lineage for lineage in column_lineage\
+                           if lineage.compute_column is None]
+    
+    grouped:Dict[str,List[ColumnLineage]] = defaultdict(list)
+
+    for lineage in non_compute_columns:
+        grouped[lineage.target_table].append(lineage)
+
+    return {
+        key: value\
+        for key, value in grouped.items()\
+        if len(value) > 1
+    }
+
+def internal_find_select_column_lineage(ast:Expression)->List[ColumnLineage]:
+    """
+    Handle simple select , select into , create table as select (CTAS)
+    """
+
+    lineage:List[ColumnLineage] = list()
+
+    target_statement = find_source_target_table(ast=ast)
+
+    target_table = None
+    
+    if len(target_statement)>0:
+
+        targets = target_statement[0][1]
+
+        if len(targets)>0:
+            target_table = targets[0]
+ 
+    for scope in traverse_scope(expression=ast):
+        
+        select = scope.expression
+
+        if not isinstance(select, exp.Select):
+            continue
+
+        for alias_or_column in select.expressions:
+            
+            target_column = internal_get_output_alias_or_column(node=alias_or_column)
+
+            for source_table,source_column in internal_get_source_column(node=alias_or_column,scope=scope):
+                
+                transformation = None
+
+                if not internal_is_direct_column_mapping(alias_or_column):
+                    transformation = alias_or_column.sql()
+
+                lineage.append(
+                    ColumnLineage(
+                        source_table=source_table,
+                        source_column=source_column,
+                        target_table=target_table,
+                        target_column=target_column,
+                        compute_column=transformation
+                    )
+                )
+
+    return lineage
+
+def internal_is_direct_column_mapping(node:Expression)->bool:
+
+    inner = node 
+
+    if isinstance(node,exp.Alias):
+        inner = node.this
+
+    return isinstance(inner,exp.Column)
+
+def internal_get_schema_mapping(metadata:Metadata)->MappingSchema:
+
+    schema_mapping:dict = {
+        metadata.database:{}
+    }
+    
+    database_mapping = schema_mapping[metadata.database]
+
+    for obj in metadata.objects:
+
+        if obj.schema not in database_mapping:
+            database_mapping[obj.schema] = {}
+        
+        database_mapping[obj.schema][obj.name] = {
+            column:"UNKNOWN"
+            for column in obj.columns
+        }
+
+    return MappingSchema(schema_mapping)
+            
+
+def internal_get_output_alias_or_column(node:Expression)->str:
+    """
+    Get column name or alias name of the node
+    """
+    if isinstance(node,exp.Alias):
+        return node.alias
+    elif isinstance(node,exp.Column):
+        return node.name
+    
+    # for unidentified expression like SUM(...) , COUNT(...),...
+
+    return node.sql()
+
+def internal_get_source_column(node:Expression,scope:Scope)->List[Tuple[str,str]]:
+    """
+    Get the List[(table excluding CTE,column)].
+    """
+
+    result:List[Tuple[str,str]] = list()
+
+    search_node:Expression = node
+
+    if isinstance(node,exp.Alias):
+        search_node = node.this
+    
+    for column in search_node.find_all(exp.Column):
+        
+        # get the table back from column (this work because the the table name are qualify) (column is in table.column format)
+
+        table_alias = column.table
+
+        source = scope.sources.get(table_alias)
+
+        if isinstance(source,exp.Table):
+            result.append((internal_get_table_name(source),column.name))
+
+
+    return result
 
 def find_source_target_table(ast:Expression)->List[Tuple[Set[str],List[str]]]:
     """
